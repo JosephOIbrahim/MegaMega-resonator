@@ -11,7 +11,9 @@ thesis — true lasing / oracle-dependent gain / parasitic lasing / dead.
 
 ```
 Mile 1-2  ████████████████████  DONE   generator + constraints + scoring (414 tests)
-Mile 3    ░░░░░░░░░░░░░░░░░░░░  PENDING cheap validating test (blocked on Round 5 spec)
+Mile 3    ████████████████████  BUILT  3-arm resonator test (441 tests, stub-verified)
+                                        → needs a live API key + one run to produce
+                                          the four-way verdict. See RUN.md.
 ```
 
 The interferometer build was abandoned. The thesis is now a **resonator**:

@@ -54,9 +54,30 @@ class LogicTask(BaseModel):
     m_constraints: int
     requested_mu: float
     realized_mu: float
+    strict_additive: bool = False
     entities: tuple[str, ...]
     constraints: tuple[Constraint, ...]
     ground_truth: dict[str, NodeState]
+
+    @model_validator(mode="after")
+    def _strict_additive_is_all_local(self) -> "LogicTask":
+        """
+        Invariant for the resonator proxy-cavity test (Gemini Round 5,
+        Challenge 1 concession): a strict-additive task must be solvable
+        purely by ADDING correct (node, attr, value) triples. Any coupled
+        constraint can create revision pressure that an append-only cavity
+        cannot satisfy, which would falsely spike cavity loss L_t and kill
+        the thesis for the wrong reason. So strict-additive tasks are
+        all-local by construction, and the validator enforces it.
+        """
+        if self.strict_additive:
+            for c in self.constraints:
+                if c.kind != "local":
+                    raise ValueError(
+                        "strict_additive task contains a non-local constraint "
+                        f"({c.kind}); proxy-cavity validity requires all-local."
+                    )
+        return self
 
     @model_validator(mode="after")
     def _gt_satisfies_constraints(self) -> "LogicTask":
@@ -86,6 +107,7 @@ def generate_task(
     mu: float,
     n_entities: int = 8,
     m_constraints: int = 20,
+    strict_additive: bool = False,
 ) -> LogicTask:
     """
     Generate a single logic-grid task.
@@ -94,9 +116,17 @@ def generate_task(
         seed: RNG seed. Same seed -> same task.
         mu: Modularity coefficient in [0.0, 1.0]. Fraction of constraints
             that are local (unary). Remainder are coupled (binary).
+            Ignored when strict_additive=True (forced all-local).
         n_entities: Number of nodes. Default 8 per the experimental spec.
         m_constraints: Total constraints. Default 20 per the experimental
             spec.
+        strict_additive: When True, every constraint is local (unary) and
+            pins one (node, attr) slot to its ground-truth value. The task
+            is then solvable purely by ADDING correct triples — never by
+            retracting one. Required for the resonator proxy-cavity test:
+            an append-only cavity cannot satisfy revision pressure, so
+            coupled constraints would falsely inflate cavity loss. This is
+            the boundary condition Gemini conceded in Round 5, Challenge 1.
 
     Returns:
         A frozen, validated LogicTask. The constraints are shuffled so
@@ -114,7 +144,9 @@ def generate_task(
     if m_constraints < 0:
         raise ValueError(f"m_constraints must be >= 0, got {m_constraints}")
 
-    num_local = round(m_constraints * mu)
+    # Strict-additive forces all-local: no coupled constraints, mu := 1.0.
+    effective_mu = 1.0 if strict_additive else mu
+    num_local = round(m_constraints * effective_mu)
     num_coupled = m_constraints - num_local
 
     if num_coupled > 0 and n_entities < 2:
@@ -212,6 +244,7 @@ def generate_task(
         m_constraints=m_constraints,
         requested_mu=mu,
         realized_mu=realized_mu,
+        strict_additive=strict_additive,
         entities=entities,
         constraints=tuple(constraints),
         ground_truth=ground_truth,
@@ -224,11 +257,16 @@ def generate_batch(
     mu: float,
     n_entities: int = 8,
     m_constraints: int = 20,
+    strict_additive: bool = False,
 ) -> list[LogicTask]:
     """Convenience: generate N independent tasks at a fixed mu."""
     return [
         generate_task(
-            seed=s, mu=mu, n_entities=n_entities, m_constraints=m_constraints
+            seed=s,
+            mu=mu,
+            n_entities=n_entities,
+            m_constraints=m_constraints,
+            strict_additive=strict_additive,
         )
         for s in seeds
     ]
