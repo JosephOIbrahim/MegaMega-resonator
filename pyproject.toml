@@ -14,8 +14,13 @@ dev = [
     "pytest-cov>=5.0",
 ]
 # Reserved for downstream phases — not installed by default to keep Phase 1 lean.
+# usd-core 24.x is the last pin from 2024; bump it when Phase 2 (real USD)
+# starts, not before.
 usd = ["usd-core>=24.0"]
-cloud = ["anthropic>=0.40"]
+# anthropic 2.0.0 is the first Python SDK release that sends API version
+# 2026-10-21 by default (no temperature / top_p / top_k).
+cloud = ["anthropic>=2.0.0"]
+# OpenAI model names move faster than this harness; set RESONATOR_MODEL.
 openai = ["openai>=1.40"]
 
 [build-system]

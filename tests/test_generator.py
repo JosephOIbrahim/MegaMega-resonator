@@ -199,6 +199,19 @@ class TestEdgeCases:
         with pytest.raises(ValueError, match="domain exhausted"):
             generate_task(seed=0, mu=1.0, n_entities=1, m_constraints=10)
 
+    def test_full_grid_is_the_local_ceiling(self) -> None:
+        # 8 entities * 3 attrs = 24 unique local slots. 24 is the full grid;
+        # 25 must fail. This is why "raise m_constraints to 30" cannot work
+        # without adding entities or changing the constraint class.
+        with pytest.raises(ValueError, match="domain exhausted"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                n_entities=8,
+                m_constraints=25,
+                strict_additive=True,
+            )
+
 
 # ---------------------------------------------------------------------------
 # Constraint evaluation semantics

@@ -12,8 +12,10 @@ Track C — Blind resonator: T rounds, fed only the accumulated state, no
           failure report. Tests the deployment thesis (verifier-free
           self-localization).
 
-Every iterative round records (score, state_volume_tokens) so the verdict
-layer can detect parasitic lasing — volume climbing while score does not.
+Every round records (score, state_volume_tokens, usage, stop_reason,
+parse_failed) so the verdict layer can detect parasitic lasing — volume
+climbing while score does not — and distinguish a model failure from an
+instrumentation failure.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from resonator.cavity import (
     CavityState,
     SparsityGuard,
     compose,
-    parse_response,
+    parse_response_checked,
 )
 from resonator.config import ExperimentConfig, approx_tokens
 from resonator.llm import LLMClient
@@ -45,12 +47,31 @@ class RoundRecord:
     state_volume_tokens: int
     dropped_opinions: int
     sparsity_rejected: bool
+    parse_failed: bool = False
+    input_tokens: int = 0
+    output_tokens: int = 0
+    stop_reason: str = ""
+
+
+@dataclass
+class BaselineResult:
+    """Best-of-N score plus the usage that produced it."""
+
+    score: float
+    input_tokens: int = 0
+    output_tokens: int = 0
+    parse_failures: int = 0
+    stop_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
 class TaskResult:
     seed: int
     baseline_score: float
+    baseline_input_tokens: int = 0
+    baseline_output_tokens: int = 0
+    baseline_parse_failures: int = 0
+    baseline_stop_reasons: list[str] = field(default_factory=list)
     oracle_trajectory: list[RoundRecord] = field(default_factory=list)
     blind_trajectory: list[RoundRecord] = field(default_factory=list)
 
@@ -64,16 +85,37 @@ class TaskResult:
 
 
 def run_baseline(
-    task: LogicTask, client: LLMClient, cfg: ExperimentConfig
-) -> float:
-    """Track A: best-of-N zero-shot. Returns max score over N samples."""
+    task: LogicTask,
+    client: LLMClient,
+    cfg: ExperimentConfig,
+    guard: SparsityGuard,
+) -> BaselineResult:
+    """Track A: best-of-N zero-shot. Returns max score plus usage."""
     prompt = render_task_prompt(task)
     best = 0.0
+    input_tokens = 0
+    output_tokens = 0
+    parse_failures = 0
+    stop_reasons: list[str] = []
     for _ in range(cfg.baseline_samples):
-        raw = client.complete(prompt, cfg.temperature_baseline)
-        st = parse_response(raw)
-        best = max(best, score(task, st))
-    return best
+        completion = client.complete(prompt)
+        input_tokens += completion.input_tokens
+        output_tokens += completion.output_tokens
+        stop_reasons.append(completion.stop_reason)
+
+        state, parse_failed = parse_response_checked(completion.text)
+        guard.record_parse(parse_failed)
+        if parse_failed:
+            parse_failures += 1
+        best = max(best, score(task, state))
+
+    return BaselineResult(
+        score=best,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        parse_failures=parse_failures,
+        stop_reasons=stop_reasons,
+    )
 
 
 def _run_resonator(
@@ -97,35 +139,41 @@ def _run_resonator(
         else:
             prompt = blind_feedback_prompt(task, state)
 
-        raw = client.complete(prompt, cfg.temperature_iterative)
+        completion = client.complete(prompt)
+        admission = guard.admit(completion.text, state, round_index=t)
 
-        rejected = False
-        if t > 1:
-            admitted = guard.admit(raw, state)
-            if not admitted:
-                rejected = True
-                task_triggered = True
-                # Freeze state for this round (Full-File Cheat defense).
-                traj.append(
-                    RoundRecord(
-                        round_index=t,
-                        score=score(task, state),
-                        state_volume_tokens=approx_tokens(json.dumps(state)),
-                        dropped_opinions=0,
-                        sparsity_rejected=True,
-                    )
+        if not admission.admitted:
+            if not admission.parse_failed:
+                task_triggered = True  # sparsity rejection, not a parse failure
+            # Freeze state for this round. A parse failure and a full-file
+            # rewrite are different instrumentation events.
+            traj.append(
+                RoundRecord(
+                    round_index=t,
+                    score=score(task, state),
+                    state_volume_tokens=approx_tokens(json.dumps(state)),
+                    dropped_opinions=0,
+                    sparsity_rejected=not admission.parse_failed,
+                    parse_failed=admission.parse_failed,
+                    input_tokens=completion.input_tokens,
+                    output_tokens=completion.output_tokens,
+                    stop_reason=completion.stop_reason,
                 )
-                continue
+            )
+            continue
 
-        delta = parse_response(raw)
-        state, dropped = compose(state, delta)
+        state, dropped = compose(state, admission.delta)
         traj.append(
             RoundRecord(
                 round_index=t,
                 score=score(task, state),
                 state_volume_tokens=approx_tokens(json.dumps(state)),
                 dropped_opinions=dropped,
-                sparsity_rejected=rejected,
+                sparsity_rejected=False,
+                parse_failed=False,
+                input_tokens=completion.input_tokens,
+                output_tokens=completion.output_tokens,
+                stop_reason=completion.stop_reason,
             )
         )
 

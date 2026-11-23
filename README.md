@@ -1,77 +1,137 @@
 # MegaMega
 
-**Track A** experimental harness — measuring USD LIVRPS composition as a
-text-space substrate for cloud LLM signal multiplication on procedural
-combinatorial tasks.
+**Track A** experimental harness — testing whether composing cloud LLM
+responses through a lossless cavity produces measurable constraint-
+satisfaction gain over naive best-of-N on procedural combinatorial tasks.
 
-**Mile 1 of ~7 — benchmark generator.**
-
-The thesis under test: composing N cloud LLM responses via Pixar USD's
-LIVRPS priority resolution produces measurably higher constraint
-satisfaction than naive Best-of-N, Self-Consistency, or flat dictionary
-merge — on tasks where the schema can express the constraints.
-
-The Bifurcation Theorem (Round 2) bounds the achievable gain: text-space
-composition is strictly filtering (DPI bound), so the question is whether
-schema-mediated filtering produces a measurable lift over flat baselines,
-and at what modularity coefficient μ the lift is maximized.
+**Mile 5 of ~7 — instrument validity.** The substrate (Mile 1–2), the
+3-arm resonator (Mile 3), and the November 2026 compatibility pass
+(Mile 4) are built. 460 tests pass. The May 2026 live run found the
+benchmark too easy for Haiku 4.5 (B = 1.000 on the first four tasks); the
+task class is the open scientific blocker.
 
 ---
 
-## Setup
+## What is being tested
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
+The thesis: composing N cloud LLM responses through Pixar USD's LIVRPS
+priority resolution produces measurably higher constraint satisfaction than
+naive Best-of-N, Self-Consistency, or flat dictionary merge — on tasks where
+the schema can express the constraints.
+
+The Bifurcation Theorem (Round 2) bounds the achievable gain: text-space
+composition is strictly filtering (DPI bound), so the question is whether
+schema-mediated filtering and iterative feedback produce a measurable lift
+over flat baselines, and at what modularity coefficient μ the lift is
+maximized.
+
+The cheap test is a **resonator**, not an interferometer: signal bounces
+inside a lossless proxy cavity across feedback rounds and ratchets upward.
+USD is the lossless mirror, not the amplifier — the gain is the LLM's
+conditional generation across rounds. Real USD enters only if gain is proven.
+
+---
+
+## Current state
+
+```
+Mile 1–2  DONE    substrate: generator, constraint algebra, scoring
+Mile 3    BUILT   3-arm resonator test: baseline / oracle / blind
+Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
+                  no sampling params, usage/stop_reason capture
+Mile 5    DONE    instrument validity: parse-first guard, parse/truncation
+                  invalidation, TRUE_LASING CI gate
+Mile 6    NEXT    task redesign: local non-pinning constraints
+Mile 7    QUEUED  dry run → calibration → real runs → verdict
 ```
 
-## Phase plan
+**The May 2026 finding:** a live run on Claude Haiku 4.5 showed best-of-5
+baseline **B = 1.000** on the first 4 tasks. Zero headroom, so the run was
+stopped after about 2 cents. That is a calibration finding, not a thesis
+result.
 
+**Why it happened:** 8 entities × 3 attributes = 24 slots. The generator
+pins every slot with a `Node.attr == value` constraint, so the prompt
+contains the answer and the model only has to reformat it as JSON. At
+`n_entities=8`, `m_constraints=24` is the full grid; raising it to 30 raises
+`ValueError: Constraint domain exhausted`. Difficulty hardening (Mile 6)
+changes the constraint class, not the count.
+
+---
+
+## Setup (PowerShell, in the repo folder)
+
+```powershell
+cd C:\Users\User\MegaMega-resonator
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev,cloud]"
+pytest -q
 ```
-Phase 1 (~Day 1-2): Substrate
-  ├─ megamega/bench/constraints.py  ✓
-  ├─ megamega/bench/generator.py    ✓
-  ├─ tests/test_generator.py        ✓
-  └─ schemas/usd_base.usda          ← next
 
-Phase 2 (~Day 3-4): Pipeline
-  ├─ megamega/cloud/orchestrator.py   16-variant prompt schedule, parallel async
-  ├─ megamega/cloud/json_to_usda.py   Pydantic → Sdf.Layer with sparsity enforcement
-  └─ megamega/compose/livrps_runner.py  Sublayer stacking, judge-score ordering, registry eviction
+You want **460 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
+which sends API version `2026-10-21` by default. The `openai` extra is
+optional and requires an explicit `RESONATOR_MODEL`.
 
-Phase 3 (~Day 5): Scoring + baselines
-  ├─ megamega/score/                 Proportional constraint satisfaction
-  └─ megamega/baselines/             best_of_n, self_consistency, flat_merge (null-safe)
+For a free dry run (no key, no network):
 
-Phase 4 (~Day 6-7): Sweep + analysis
-  ├─ megamega/experiment/runner.py   5 μ × 5 conditions × 100 tasks
-  └─ megamega/experiment/analysis.py paired Wilcoxon + Benjamini-Hochberg FDR
+```powershell
+python -m resonator.run
 ```
+
+It should print `VERDICT: INVALID` with a 100% sparsity trigger rate. That
+is correct: the stub deliberately ignores the sparse-delta instruction, and
+the invalidation gate catches it.
+
+For a real run, see `RUN.md`.
+
+---
 
 ## Design invariants
 
 - **Ground-truth-first construction.** Every task is guaranteed satisfiable
   because constraints are derived from a sampled GT. The generator validates
   this invariant at construction time.
-- **Deterministic replay.** A (seed, mu, N, M) tuple produces a bit-identical
-  task. Required for cross-condition pairing.
+- **Deterministic task generation.** A (seed, mu, N, M) tuple produces the
+  same task. Model sampling is the provider default, so model outputs are
+  not deterministic; replicate runs for variance.
 - **Missing-or-None fails.** A constraint over a missing attribute fails,
   matching USD's "opinion absence" semantics. Sparse responses lose points.
 - **No LLM-as-judge for final scoring.** Constraint satisfaction is
-  deterministic Python; the LLM judge is used only for sublayer ordering.
+  deterministic Python; any LLM judge is used only for sublayer ordering.
+- **Append-only proxy cavity.** The cheap test never overwrites an existing
+  (node, attribute) slot. This is first-writer-wins, not LIVRPS; model
+  strength ordering belongs to Phase 2.
+- **Instrumentation gates.** A run is INVALID if sparsity rejections exceed
+  30%, parse failures exceed 10%, or `max_tokens` stops exceed 10%.
+  TRUE_LASING requires a blind gain of at least 5 points and a paired
+  bootstrap 95% CI that excludes zero; monotonic growth is diagnostic only.
+- **Environment-only secrets, hard call cap.** API keys are read from the
+  environment and never serialized. A `BudgetGuard` stops the run at the
+  call ceiling.
 
-## Critical risks designed-against
+---
 
-Per the engineering blueprint (Round 3):
+## Layout
 
-- **Dense-Output Degeneration (85%):** the Pydantic translator will enforce
-  structural masking per prompt variant, not merely type validation.
-  Region Specialist responses get filtered to region-only, etc.
-- **Sdf.LayerRegistry OOM (Phase 2):** explicit `Sdf.LayerRegistry().Erase(id)`
-  in the runner loop after every task evaluation.
-- **Oracle Sublayer Trap:** sublayer ordering must use the same LLM-judge
-  scores generated for the Best-of-N condition, computed first.
-- **Null-Destruction Confound:** the flat-merge baseline must ignore
-  None/null to be mathematically isomorphic to USD's occlusive fall-through.
+```
+megamega/bench/            constraint algebra + procedural task generator
+resonator/config.py        every experimental knob; model registry; pricing
+resonator/llm.py           Anthropic / OpenAI / stub clients, budget + usage
+resonator/cavity.py        append-only proxy cavity + sparsity guard
+resonator/arms.py          baseline / oracle / blind trajectories
+resonator/task_adapter.py  task prompt, oracle feedback, scoring
+resonator/verdict.py       four-way decision tree
+resonator/run.py           orchestrator + artifact writer
+tests/                     generator and resonator test suites
+runs/                      run artifacts (gitignored)
+docs/archive/              historical interferometer plan
+```
+
+---
+
+## History
+
+The original interferometer / USD plan is archived in
+`docs/archive/interferometer-plan.md`. It is kept for the thesis context,
+not as the current build order.
