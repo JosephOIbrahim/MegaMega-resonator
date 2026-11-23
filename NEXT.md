@@ -1,34 +1,93 @@
 # NEXT — resume here
 
-**Status:** Build complete and on GitHub. One open thread before a real verdict.
+**Status (2026-11-23):** Mile 5 core instrumentation is done. Mile 6 (task
+redesign) is next and remains the open scientific blocker.
 
-**The finding (2026-05-16):** First live run on Claude Haiku 4.5
-(`claude-haiku-4-5-20251001`) showed best-of-5 baseline **B = 1.000** on
-the first 4 tasks. The benchmark is too easy for a current frontier-cheap
-model — zero headroom for the resonator to demonstrate gain. Run was
-stopped after 4 tasks (~2 cents). This is a calibration finding, not a
-thesis result. The instrumentation worked: the problem was caught
-immediately via the live progress markers.
+---
 
-**The open thread:** Harden the benchmark so single-shot success drops
-below ~20% for Haiku 4.5, WITHOUT breaking the strict-additive property
-that the proxy-cavity validity depends on (Gemini Round 5, Challenge 1).
-This is a design judgment, not a one-liner — likely worth a short Gemini
-handoff: more entities + more constraints is the obvious lever, but it
-must preserve "solvable purely by adding correct triples, never by
-revision." Also add a free calibration pre-check so a mis-tuned run can
-never silently waste budget again.
+## What changed in Mile 5 (2026-11-23)
 
-**Concrete next actions, in order:**
-1. Decide difficulty-hardening approach (Gemini handoff recommended —
-   the constraint is preserving strict-additivity while raising
-   difficulty for a strong model).
-2. Patch `resonator/config.py` difficulty knobs + add calibration
-   pre-check (free, estimates single-shot success before spending).
-3. Re-run dry (stub) → confirm pipeline → real run with new key.
-4. Read the four-way verdict.
+- **Parse-first sparsity guard.** The guard parses the response, then
+  compares the parsed delta to the prior state. Prose and code fences around
+  a small delta no longer trigger a false "full-file rewrite."
+- **Parse-failure invalidation.** `parse_response_checked` separates a
+  malformed response from an empty one. Parse failures are counted and void
+  the run above 10%.
+- **max_tokens invalidation.** The `UsageLedger` stop-reason counts feed a
+  second gate: more than 10% truncated calls and the run is INVALID.
+- **TRUE_LASING gate fixed.** It now requires `R_blind > B`, a blind gain of
+  at least 5 points, and a paired bootstrap 95% CI that excludes zero.
+  Monotonic growth is reported but no longer required, so a perfect blind
+  first round is not mislabelled as ORACLE_DEPENDENT.
+- Artifact records all three rates, `invalidation_reasons`, blind gain and
+  its CI, and per-task baseline parse failures.
+- 460 tests pass.
 
-**Everything else is done:** substrate (Mile 1-2), resonator (Mile 3),
-441 tests, repo live on GitHub (private), model string fixed to
-`claude-haiku-4-5-20251001`. Key handling is environment-only; rotate
-if ever exposed.
+## What changed in Mile 4 (2026-11-23)
+
+- Default model is `claude-haiku-5-5` (current cheap Haiku, 10× cheaper
+  than Haiku 4.5).
+- `anthropic>=2.0.0`; API version `2026-10-21`.
+- Removed `temperature` / `top_p` / `top_k`: the current API rejects them on
+  every model. The harness uses the provider default and records usage so
+  replicate runs can be compared.
+- `max_tokens` 1024 → 4096; effort `low` + thinking disabled on Anthropic.
+- Every call records input/output tokens and `stop_reason` in a
+  `UsageLedger`; the artifact carries `usage` and per-round usage.
+- README is the current index; the old interferometer plan is archived in
+  `docs/archive/interferometer-plan.md`.
+
+---
+
+## History: the May 2026 finding
+
+First live run on Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) showed
+best-of-5 baseline **B = 1.000** on the first 4 tasks. The benchmark is too
+easy for a current frontier-cheap model — zero headroom for the resonator.
+Run was stopped after 4 tasks (~2 cents). This is a calibration finding,
+not a thesis result. The instrumentation caught it immediately.
+
+**Why:** 8 entities × 3 attributes = 24 slots, and `m_constraints=24` pins
+every slot with `Node.attr == value`. The prompt contains the answer; the
+model only reformats it. At `n_entities=8`, 24 is the full grid and 25
+raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
+30 was wrong and has been removed.
+
+---
+
+## Next actions, in order
+
+1. **Mile 6 — task redesign (open blocker).** Add local non-pinning
+   constraints (inequality, set membership, range) that stay single-slot
+   and add-only. Calibrate to single-shot < 20% / B < 0.5. If the task class
+   cannot reach it without truncation, report that and escalate.
+2. **Mile 6 prep — remaining instrumentation.** Add `resonator/calibrate.py`
+   (K tasks × M samples; abort if B is too high), per-task JSONL
+   checkpointing so an interrupted run keeps data, and CLI arguments for
+   tasks/provider/model. Add an oracle-repair diagnostic before trusting a
+   DEAD verdict: the proxy drops corrections to already-filled slots, so
+   the oracle arm currently measures "did the model guess wrong early" as
+   well as "can it use feedback." These were part of the original Mile 5
+   plan and are not blockers for the redesign.
+3. **Mile 7 — run.** Dry run → calibration → three real runs → verdict with
+   CIs → update this file.
+
+---
+
+## Decisions already made (2026-11-23)
+
+- **Model:** Haiku 5.5, with Haiku 4.5 kept for replication.
+- **Sampling:** delete temperature; use provider default; three replicate
+  runs and CIs.
+- **Cavity:** keep first-writer-wins for the cheap test; document it
+  honestly and add `dropped_opinions` + an oracle-repair diagnostic. Model
+  strength ordering belongs to Phase 2.
+- **Difficulty:** local non-pinning constraints + calibration (Mile 6).
+- **Instrumentation:** parse-first guard; INVALID above 10% parse failures
+  or 10% max_tokens stops; TRUE_LASING needs ≥5-point blind gain and a CI
+  excluding zero.
+- **OpenAI:** no hardcoded model; `RESONATOR_MODEL` required.
+
+**Everything else is done:** substrate (Mile 1–2), resonator (Mile 3),
+460 tests, environment-only key handling. Rotate the key if it was ever
+exposed.

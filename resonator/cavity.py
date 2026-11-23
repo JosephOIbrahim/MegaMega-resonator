@@ -18,15 +18,18 @@ overwritten. A wrong value placed in an early round is therefore PERMANENT
 — which is exactly the substrate on which parasitic lasing becomes
 observable (a locked-in falsehood the cavity faithfully preserves).
 
-Sparsity guard
---------------
-For rounds t > 1, a response r_t whose size is not strictly smaller than
-ratio * size(S_{t-1}) is REJECTED and the state is frozen for that round.
-This defeats the "Full-File Cheat" false positive: a model that ignores
-the sparse-delta instruction and regenerates the whole file every round
-would bypass the cavity entirely and we'd be measuring prompt-chaining,
-not cavity gain. Trigger rate is tracked; >30% across B/C invalidates the
-whole run (Round 5, invalidation observable).
+Sparsity guard (parse-first)
+----------------------------
+For rounds t > 1, the guard parses the response FIRST, then compares the
+size of the parsed delta to ratio * size(S_{t-1}). Measuring the raw string
+would reject a sparse delta wrapped in prose or code fences — a false
+positive; parsing first measures the information that would actually enter
+the cavity.
+
+A response that does not parse is rejected and counted as a parse failure,
+not a sparsity trigger. Parse failures and max_tokens stop reasons are
+separate invalidation signals (Mile 5). The max_tokens count lives in the
+UsageLedger because it applies to every call, including the baseline.
 """
 
 from __future__ import annotations
@@ -42,38 +45,34 @@ CavityState = dict[str, dict[str, object]]
 VALID_ATTRS = ("region", "role", "capacity")
 
 
-def parse_response(raw: str) -> CavityState:
+def parse_response_checked(raw: str) -> tuple[CavityState, bool]:
     """
-    Parse a model response into a CavityState, defensively.
+    Parse a model response into a CavityState and report whether parsing
+    failed.
 
-    Accepts a JSON object of {node: {attr: value}}. Anything malformed,
-    any unknown attr, any non-dict node body is dropped silently. A
-    response that doesn't parse at all yields an empty delta — the round
-    contributes nothing rather than crashing the run.
+    Returns (state, failed). `failed` is True only when no JSON object can
+    be recovered. A valid JSON object with no usable attributes returns
+    ({}, False): that is an empty opinion set, not a malformed response.
     """
-    raw = raw.strip()
-    # Tolerate code fences and prose around the JSON.
-    if "```" in raw:
-        # take the largest brace-delimited span
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            raw = raw[start : end + 1]
-    try:
-        obj = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        # last-ditch: largest {...} span
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return {}
+    text = raw.strip()
+    candidates = [text]
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.append(text[start : end + 1])
+
+    obj: object | None = None
+    parsed = False
+    for candidate in candidates:
         try:
-            obj = json.loads(raw[start : end + 1])
+            obj = json.loads(candidate)
         except (json.JSONDecodeError, ValueError):
-            return {}
+            continue
+        parsed = True
+        break
 
-    if not isinstance(obj, dict):
-        return {}
+    if not parsed or not isinstance(obj, dict):
+        return {}, True
 
     cleaned: CavityState = {}
     for node, body in obj.items():
@@ -88,7 +87,13 @@ def parse_response(raw: str) -> CavityState:
             attrs[attr] = val
         if attrs:
             cleaned[node] = attrs
-    return cleaned
+    return cleaned, False
+
+
+def parse_response(raw: str) -> CavityState:
+    """Backward-compatible wrapper: return the state, drop the status."""
+    state, _ = parse_response_checked(raw)
+    return state
 
 
 def compose(state: CavityState, delta: CavityState) -> tuple[CavityState, int]:
@@ -113,33 +118,99 @@ def compose(state: CavityState, delta: CavityState) -> tuple[CavityState, int]:
     return new_state, dropped
 
 
+@dataclass(frozen=True)
+class Admission:
+    """The guard's decision for one response."""
+
+    admitted: bool
+    delta: CavityState
+    parse_failed: bool
+    raw_tokens: int
+    delta_tokens: int
+
+
 @dataclass
 class SparsityGuard:
-    """Tracks rejections of over-large (non-sparse) responses."""
+    """
+    Tracks the instrumentation signals that can void a run:
+    - sparsity rejections (full-file rewrites)
+    - parse failures (no recoverable JSON object)
+
+    max_tokens stops are counted in the UsageLedger, not here.
+    """
 
     ratio: float
-    checks: int = 0
+    checks: int = 0  # sparsity checks (t > 1 with a non-empty prior state)
     triggers: int = 0
+    parse_checks: int = 0
+    parse_failures: int = 0
     per_task_triggered: list[bool] = field(default_factory=list)
 
-    def admit(self, raw_response: str, prior_state: CavityState) -> bool:
+    def admit(
+        self,
+        raw_response: str,
+        prior_state: CavityState,
+        round_index: int,
+    ) -> Admission:
         """
-        Decide whether r_t may enter the cavity. Only enforced for t > 1
-        (caller passes prior_state empty for round 1 to skip the check).
+        Parse r_t, then decide whether it may enter the cavity.
 
-        Returns True if the response is admitted, False if rejected for
-        being non-sparse (caller must freeze state for that round).
+        Parse failures are rejected and counted separately. The sparsity
+        check runs only for round_index > 1 with a non-empty prior state.
+        The caller must freeze state when `admitted` is False.
         """
-        if not prior_state:
-            return True  # round 1 — nothing to be sparse relative to
+        delta, parse_failed = parse_response_checked(raw_response)
+        self.parse_checks += 1
+        raw_tokens = approx_tokens(raw_response)
+
+        if parse_failed:
+            self.parse_failures += 1
+            return Admission(
+                admitted=False,
+                delta={},
+                parse_failed=True,
+                raw_tokens=raw_tokens,
+                delta_tokens=0,
+            )
+
+        delta_tokens = approx_tokens(json.dumps(delta, sort_keys=True))
+
+        if round_index <= 1 or not prior_state:
+            return Admission(
+                admitted=True,
+                delta=delta,
+                parse_failed=False,
+                raw_tokens=raw_tokens,
+                delta_tokens=delta_tokens,
+            )
+
         self.checks += 1
-        r_tok = approx_tokens(raw_response)
         s_tok = approx_tokens(json.dumps(prior_state))
-        admitted = r_tok < self.ratio * s_tok
+        admitted = delta_tokens < self.ratio * s_tok
         if not admitted:
             self.triggers += 1
-        return admitted
+        return Admission(
+            admitted=admitted,
+            delta=delta,
+            parse_failed=False,
+            raw_tokens=raw_tokens,
+            delta_tokens=delta_tokens,
+        )
+
+    def record_parse(self, failed: bool) -> None:
+        """Record a parse attempt made outside admit() (the baseline arm)."""
+        self.parse_checks += 1
+        if failed:
+            self.parse_failures += 1
 
     @property
     def trigger_rate(self) -> float:
         return self.triggers / self.checks if self.checks else 0.0
+
+    @property
+    def parse_failure_rate(self) -> float:
+        return (
+            self.parse_failures / self.parse_checks
+            if self.parse_checks
+            else 0.0
+        )
