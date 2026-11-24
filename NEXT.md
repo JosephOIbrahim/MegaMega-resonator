@@ -1,9 +1,23 @@
 # NEXT — resume here
 
-**Status (2026-11-23):** Mile 5 core instrumentation is done. Mile 6 (task
-redesign) is next and remains the open scientific blocker.
+**Status (2026-11-23):** Mile 6 prep is in progress. The calibration
+pre-check is done; the constraint redesign remains the open scientific
+blocker.
 
 ---
+
+## What changed in Mile 6 prep (2026-11-23)
+
+- Added `resonator/calibrate.py`: runs K tasks × M independent samples,
+  reports first-shot and best-of-N mean and success rates, counts parse
+  failures, and exits non-zero when B is above the target.
+- Writes `runs/calibration-*.json` with per-task scores and usage.
+- `--n-entities` / `--m-constraints` test a candidate difficulty without
+  editing the config.
+- 6 new tests; 466 total.
+
+Remaining prep: per-task JSONL checkpointing, CLI arguments for the full
+run, and the oracle-repair diagnostic.
 
 ## What changed in Mile 5 (2026-11-23)
 
@@ -21,7 +35,7 @@ redesign) is next and remains the open scientific blocker.
   first round is not mislabelled as ORACLE_DEPENDENT.
 - Artifact records all three rates, `invalidation_reasons`, blind gain and
   its CI, and per-task baseline parse failures.
-- 460 tests pass.
+- 466 tests pass.
 
 ## What changed in Mile 4 (2026-11-23)
 
@@ -61,14 +75,12 @@ raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
    constraints (inequality, set membership, range) that stay single-slot
    and add-only. Calibrate to single-shot < 20% / B < 0.5. If the task class
    cannot reach it without truncation, report that and escalate.
-2. **Mile 6 prep — remaining instrumentation.** Add `resonator/calibrate.py`
-   (K tasks × M samples; abort if B is too high), per-task JSONL
+2. **Mile 6 prep — remaining instrumentation.** Add per-task JSONL
    checkpointing so an interrupted run keeps data, and CLI arguments for
    tasks/provider/model. Add an oracle-repair diagnostic before trusting a
    DEAD verdict: the proxy drops corrections to already-filled slots, so
    the oracle arm currently measures "did the model guess wrong early" as
-   well as "can it use feedback." These were part of the original Mile 5
-   plan and are not blockers for the redesign.
+   well as "can it use feedback." These are not blockers for the redesign.
 3. **Mile 7 — run.** Dry run → calibration → three real runs → verdict with
    CIs → update this file.
 
@@ -89,5 +101,5 @@ raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
 - **OpenAI:** no hardcoded model; `RESONATOR_MODEL` required.
 
 **Everything else is done:** substrate (Mile 1–2), resonator (Mile 3),
-460 tests, environment-only key handling. Rotate the key if it was ever
+466 tests, environment-only key handling. Rotate the key if it was ever
 exposed.

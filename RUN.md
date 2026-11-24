@@ -1,6 +1,7 @@
 # RUN.md — Running the resonator test
 
-Mile 5 is built and stub-verified (460 tests pass). A full 50-task run on
+Mile 5 is built, and Mile 6 prep adds the calibration pre-check (466 tests
+pass). A full 50-task run on
 Claude Haiku 5.5 costs roughly **$0.10–$0.20** at November 2026 prices, not
 $0.50.
 The harness uses API version `2026-10-21` through `anthropic>=2.0.0`; that
@@ -35,7 +36,7 @@ Confirm it is healthy:
 pytest -q
 ```
 
-You want: **460 passed**.
+You want: **466 passed**.
 
 For the optional OpenAI path, install `.[dev,openai]` and set
 `RESONATOR_MODEL`; there is no hardcoded 2026 default.
@@ -132,17 +133,31 @@ blind arm that solves the task on round 1 is not mislabelled.
 
 ---
 
-## Tuning before you spend
+## Calibration pre-check (Mile 6 prep)
 
-The spec wants single-shot success below 20% so the resonator has headroom.
-The old advice to raise `m_constraints` from 24 to 30 is wrong: 8 entities ×
-3 attributes = 24 slots, so 24 is the full grid and 25 raises
-`Constraint domain exhausted`. Difficulty hardening is Mile 6 (local
-non-pinning constraints + calibration). Until then, a real run is a pipeline
-test, not a thesis result.
-
-A quick, free check of the task size:
+Measure difficulty before a full run. The pre-check runs K tasks × M
+independent samples and reports first-shot and best-of-N scores. It exits
+non-zero when B is above the target, so a mis-tuned run stops before the
+full experiment spends money.
 
 ```powershell
-python -c "from megamega.bench import generate_task; t=generate_task(seed=1000,mu=1.0,strict_additive=True,n_entities=8,m_constraints=24); print('slots:', t.n_entities*3, 'constraints:', len(t.constraints))"
+# Stub: wiring check only, no network, no cost.
+python -m resonator.calibrate --tasks 4 --samples 2
+
+# Real model (after setting the key/provider from Step 2):
+python -m resonator.calibrate --tasks 10 --samples 5 --target-b 0.50
 ```
+
+It prints the first-shot mean and success rate, the best-of-N mean (B) and
+success rate, parse failures, and a PASS / FAIL / WIRING ONLY status with
+the next action. It writes `runs\calibration-*.json`.
+
+`--n-entities` and `--m-constraints` test a candidate difficulty without
+editing the config. Remember the 8 × 3 = 24 ceiling: at `n_entities=8`,
+`m_constraints` above 24 raises `Constraint domain exhausted`. The old
+advice to raise it to 30 is wrong; Mile 6 changes the constraint class, not
+the count.
+
+The spec wants single-shot success below 20% so the resonator has headroom.
+Until the Mile 6 redesign, a real run is a pipeline test, not a thesis
+result.

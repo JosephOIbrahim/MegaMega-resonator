@@ -3,8 +3,9 @@
 **Project:** MegaMega-resonator
 **Goal:** Run the sub-$5 test that returns a four-way verdict on the resonator
 thesis — true lasing / oracle-dependent gain / parasitic lasing / dead.
-**Status (2026-11-23):** Mile 5 core instrumentation is done. Mile 6 (task
-redesign) is next and remains the open scientific blocker.
+**Status (2026-11-23):** Mile 6 prep is in progress. The calibration
+pre-check is done; the constraint redesign remains the open scientific
+blocker.
 
 ---
 
@@ -12,12 +13,13 @@ redesign) is next and remains the open scientific blocker.
 
 ```
 Mile 1-2  DONE    generator + constraints + scoring
-Mile 3    BUILT   3-arm resonator test (460 tests, stub-verified)
+Mile 3    BUILT   3-arm resonator test (466 tests, stub-verified)
 Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
                   no sampling params, usage/stop_reason capture
 Mile 5    DONE    instrument validity: parse-first guard, parse/truncation
                   invalidation, TRUE_LASING CI gate
-Mile 6    NEXT    task redesign: local non-pinning constraints + calibration
+Mile 6    NEXT    task redesign: local non-pinning constraints
+                  prep: calibration pre-check (done)
 Mile 7    QUEUED  dry run -> calibration -> real runs -> verdict
 ```
 
@@ -70,9 +72,14 @@ than Haiku 4.5, so budget is no longer the constraint; validity is.
    blind gain of at least 5 points, and a CI excluding zero. Monotonic
    growth is diagnostic only.
 
+**Calibration pre-check (done):** `resonator/calibrate.py` runs K tasks × M
+samples, reports first-shot and best-of-N mean and success rates, counts
+parse failures, and exits non-zero when B is above the target. It writes a
+`runs/calibration-*.json` artifact.
+
 **Remaining instrumentation (not a blocker for the redesign):**
-`resonator/calibrate.py`, per-task JSONL checkpointing, and CLI arguments.
-Queued with Mile 6.
+per-task JSONL checkpointing, CLI arguments for the full run, and the
+oracle-repair diagnostic.
 
 ## Mile 6 — task redesign (next, open blocker)
 
