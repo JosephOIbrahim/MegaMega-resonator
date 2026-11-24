@@ -4,11 +4,12 @@
 responses through a lossless cavity produces measurable constraint-
 satisfaction gain over naive best-of-N on procedural combinatorial tasks.
 
-**Mile 5 of ~7 — instrument validity.** The substrate (Mile 1–2), the
-3-arm resonator (Mile 3), and the November 2026 compatibility pass
-(Mile 4) are built. 460 tests pass. The May 2026 live run found the
-benchmark too easy for Haiku 4.5 (B = 1.000 on the first four tasks); the
-task class is the open scientific blocker.
+**Mile 6 prep — task redesign.** The substrate (Mile 1–2), the 3-arm
+resonator (Mile 3), the November 2026 compatibility pass (Mile 4), and the
+instrument-validity pass (Mile 5) are built. The calibration pre-check is
+in place; the constraint redesign is next. 466 tests pass. The May 2026
+live run found the benchmark too easy for Haiku 4.5 (B = 1.000 on the first
+four tasks); the task class is the open scientific blocker.
 
 ---
 
@@ -42,6 +43,7 @@ Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
 Mile 5    DONE    instrument validity: parse-first guard, parse/truncation
                   invalidation, TRUE_LASING CI gate
 Mile 6    NEXT    task redesign: local non-pinning constraints
+                  prep: calibration pre-check (resonator/calibrate.py)
 Mile 7    QUEUED  dry run → calibration → real runs → verdict
 ```
 
@@ -69,7 +71,7 @@ pip install -e ".[dev,cloud]"
 pytest -q
 ```
 
-You want **460 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
+You want **466 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
 which sends API version `2026-10-21` by default. The `openai` extra is
 optional and requires an explicit `RESONATOR_MODEL`.
 
@@ -123,6 +125,7 @@ resonator/arms.py          baseline / oracle / blind trajectories
 resonator/task_adapter.py  task prompt, oracle feedback, scoring
 resonator/verdict.py       four-way decision tree
 resonator/run.py           orchestrator + artifact writer
+resonator/calibrate.py     K tasks × M samples difficulty pre-check
 tests/                     generator and resonator test suites
 runs/                      run artifacts (gitignored)
 docs/archive/              historical interferometer plan
