@@ -20,9 +20,13 @@ from megamega.bench import (
     CAPACITIES,
     REGIONS,
     ROLES,
+    SINGLE_SLOT_KINDS,
     CoupledEqualityConstraint,
     CoupledSumConstraint,
     LocalConstraint,
+    LocalInequalityConstraint,
+    LocalRangeConstraint,
+    LocalSetConstraint,
     LogicTask,
     NodeState,
     evaluate_constraint,
@@ -273,6 +277,221 @@ class TestConstraintEvaluation:
         # If translator failed to coerce, we must fail-safe, not crash.
         state = {"A": {"capacity": "8"}, "B": {"capacity": 8}}
         assert evaluate_constraint(c, state) is False
+
+
+class TestNonPinningEvaluation:
+    def test_ineq_passes_when_different(self) -> None:
+        c = LocalInequalityConstraint(node="N", attr="region", value="us")
+        assert evaluate_constraint(c, {"N": {"region": "eu"}}) is True
+
+    def test_ineq_fails_when_equal(self) -> None:
+        c = LocalInequalityConstraint(node="N", attr="region", value="us")
+        assert evaluate_constraint(c, {"N": {"region": "us"}}) is False
+
+    def test_ineq_missing_fails(self) -> None:
+        c = LocalInequalityConstraint(node="N", attr="region", value="us")
+        assert evaluate_constraint(c, {}) is False
+        assert evaluate_constraint(c, {"N": {}}) is False
+
+    def test_in_passes_when_member(self) -> None:
+        c = LocalSetConstraint(node="N", attr="role", values=("web", "db"))
+        assert evaluate_constraint(c, {"N": {"role": "db"}}) is True
+
+    def test_in_fails_when_not_member(self) -> None:
+        c = LocalSetConstraint(node="N", attr="role", values=("web", "db"))
+        assert evaluate_constraint(c, {"N": {"role": "cache"}}) is False
+
+    def test_in_missing_fails(self) -> None:
+        c = LocalSetConstraint(node="N", attr="role", values=("web", "db"))
+        assert evaluate_constraint(c, {}) is False
+
+    def test_range_ge(self) -> None:
+        c = LocalRangeConstraint(node="N", op=">=", value=8)
+        assert evaluate_constraint(c, {"N": {"capacity": 8}}) is True
+        assert evaluate_constraint(c, {"N": {"capacity": 16}}) is True
+        assert evaluate_constraint(c, {"N": {"capacity": 4}}) is False
+
+    def test_range_le(self) -> None:
+        c = LocalRangeConstraint(node="N", op="<=", value=4)
+        assert evaluate_constraint(c, {"N": {"capacity": 4}}) is True
+        assert evaluate_constraint(c, {"N": {"capacity": 2}}) is True
+        assert evaluate_constraint(c, {"N": {"capacity": 8}}) is False
+
+    def test_range_missing_or_non_int_fails(self) -> None:
+        c = LocalRangeConstraint(node="N", op=">=", value=8)
+        assert evaluate_constraint(c, {}) is False
+        assert evaluate_constraint(c, {"N": {"capacity": "8"}}) is False
+
+
+class TestNonPinningGeneration:
+    @pytest.mark.parametrize("seed", range(10))
+    def test_gt_satisfies_and_new_kinds_appear(self, seed: int) -> None:
+        task = generate_task(
+            seed=seed,
+            mu=1.0,
+            n_entities=4,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=2,
+        )
+        gt = {k: dict(v.model_dump()) for k, v in task.ground_truth.items()}
+        assert score_state(gt, task.constraints) == 1.0
+        assert all(c.kind in SINGLE_SLOT_KINDS for c in task.constraints)
+        assert any(c.kind != "local" for c in task.constraints)
+
+    def test_count_and_determinism(self) -> None:
+        kwargs = dict(
+            seed=42,
+            mu=1.0,
+            n_entities=4,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=2,
+        )
+        t1 = generate_task(**kwargs)
+        t2 = generate_task(**kwargs)
+        assert t1.constraints == t2.constraints
+        assert t1.m_constraints == 4 * 3 * 2
+        assert len(t1.constraints) == 4 * 3 * 2
+
+    def test_no_duplicate_signatures(self) -> None:
+        task = generate_task(
+            seed=3,
+            mu=1.0,
+            n_entities=4,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=3,
+        )
+        sigs = set()
+        for c in task.constraints:
+            if c.kind == "local":
+                sig = ("local", c.node, c.attr)
+            elif c.kind == "local_ineq":
+                sig = ("local_ineq", c.node, c.attr, c.value)
+            elif c.kind == "local_in":
+                sig = ("local_in", c.node, c.attr, frozenset(c.values))
+            else:
+                sig = ("local_range", c.node, c.attr, c.op, c.value)
+            assert sig not in sigs
+            sigs.add(sig)
+
+    def test_mix_forces_kind(self) -> None:
+        task = generate_task(
+            seed=0,
+            mu=1.0,
+            n_entities=2,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=1,
+            constraint_mix={"local_ineq": 1.0},
+        )
+        assert task.constraints
+        assert all(c.kind == "local_ineq" for c in task.constraints)
+
+    def test_range_only_on_capacity(self) -> None:
+        task = generate_task(
+            seed=1,
+            mu=1.0,
+            n_entities=4,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=2,
+        )
+        for c in task.constraints:
+            if c.kind == "local_range":
+                assert c.attr == "capacity"
+
+    def test_per_slot_requires_strict_additive(self) -> None:
+        with pytest.raises(ValueError, match="strict_additive"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                strict_additive=False,
+                constraints_per_slot=2,
+            )
+
+    def test_mix_requires_per_slot(self) -> None:
+        with pytest.raises(ValueError, match="constraint_mix"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                strict_additive=True,
+                constraint_mix={"local_ineq": 1.0},
+            )
+
+    def test_unknown_mix_kind_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unknown"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                strict_additive=True,
+                constraints_per_slot=1,
+                constraint_mix={"nope": 1.0},
+            )
+
+    def test_zero_or_negative_mix_rejected(self) -> None:
+        with pytest.raises(ValueError, match="sum to > 0"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                strict_additive=True,
+                constraints_per_slot=1,
+                constraint_mix={"local_ineq": 0.0},
+            )
+        with pytest.raises(ValueError, match="non-negative"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                strict_additive=True,
+                constraints_per_slot=1,
+                constraint_mix={"local_ineq": -1.0},
+            )
+
+    def test_domain_exhaustion_per_slot(self) -> None:
+        with pytest.raises(ValueError, match="exhausted"):
+            generate_task(
+                seed=0,
+                mu=1.0,
+                n_entities=1,
+                m_constraints=0,
+                strict_additive=True,
+                constraints_per_slot=20,
+            )
+
+    def test_serialization_new_kinds(self) -> None:
+        t1 = generate_task(
+            seed=5,
+            mu=1.0,
+            n_entities=2,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=3,
+        )
+        t2 = LogicTask.model_validate_json(t1.model_dump_json())
+        assert t1.constraints == t2.constraints
+
+    def test_strict_additive_rejects_coupled(self) -> None:
+        gt = {
+            "A": NodeState(region="us", role="web", capacity=8),
+            "B": NodeState(region="eu", role="db", capacity=4),
+        }
+        with pytest.raises(ValueError, match="single-slot"):
+            LogicTask(
+                seed=0,
+                n_entities=2,
+                m_constraints=1,
+                requested_mu=0.0,
+                realized_mu=0.0,
+                strict_additive=True,
+                entities=("A", "B"),
+                constraints=(
+                    CoupledEqualityConstraint(
+                        node1="A", node2="B", attr="region", op="!="
+                    ),
+                ),
+                ground_truth=gt,
+            )
 
 
 # ---------------------------------------------------------------------------

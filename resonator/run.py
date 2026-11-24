@@ -87,6 +87,7 @@ def run(cfg: ExperimentConfig | None = None) -> dict:
                 n_entities=cfg.n_entities,
                 m_constraints=cfg.m_constraints,
                 strict_additive=True,
+                constraints_per_slot=cfg.constraints_per_slot,
             )
             b = run_baseline(task, client, cfg, guard)
             o = run_oracle(task, client, cfg, guard)

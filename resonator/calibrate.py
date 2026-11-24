@@ -59,6 +59,7 @@ class CalibrationResult:
     samples_per_task: int
     n_entities: int
     m_constraints: int
+    constraints_per_slot: int
     seed_base: int
     first_shot_mean: float
     best_of_n_mean: float
@@ -150,6 +151,7 @@ def run_calibration(
     parse_failure_threshold: float = 0.10,
     n_entities: int | None = None,
     m_constraints: int | None = None,
+    constraints_per_slot: int = 1,
     seed_base: int | None = None,
     client: LLMClient | None = None,
     meaningful: bool | None = None,
@@ -169,6 +171,8 @@ def run_calibration(
         parse_failure_threshold: Maximum acceptable parse failure rate.
         n_entities: Override cfg.n_entities for a difficulty candidate.
         m_constraints: Override cfg.m_constraints for a difficulty candidate.
+        constraints_per_slot: 1 keeps the original equality task; >1
+            enables the Mile 6 non-pinning single-slot constraint class.
         seed_base: Override cfg.seed_base.
         client: Inject a client (tests). The client's ledger is used if it
             has one; otherwise usage is reported as zero.
@@ -186,6 +190,10 @@ def run_calibration(
     if samples_per_task < 1:
         raise ValueError(
             f"samples_per_task must be >= 1, got {samples_per_task}"
+        )
+    if constraints_per_slot < 1:
+        raise ValueError(
+            f"constraints_per_slot must be >= 1, got {constraints_per_slot}"
         )
     for name, value in (
         ("target_b", target_b),
@@ -217,6 +225,7 @@ def run_calibration(
     best_scores: list[float] = []
     parse_failures = 0
     parse_checks = 0
+    actual_m_constraints = m_constraints
     t0 = time.time()
 
     try:
@@ -227,7 +236,9 @@ def run_calibration(
                 n_entities=n_entities,
                 m_constraints=m_constraints,
                 strict_additive=True,
+                constraints_per_slot=constraints_per_slot,
             )
+            actual_m_constraints = len(task.constraints)
             prompt = render_task_prompt(task)
             scores: list[float] = []
             task_parse_failures = 0
@@ -296,7 +307,8 @@ def run_calibration(
         n_tasks=len(per_task),
         samples_per_task=samples_per_task,
         n_entities=n_entities,
-        m_constraints=m_constraints,
+        m_constraints=actual_m_constraints,
+        constraints_per_slot=constraints_per_slot,
         seed_base=seed_base,
         first_shot_mean=first_shot_mean,
         best_of_n_mean=best_of_n_mean,
@@ -380,6 +392,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--n-entities", type=int, default=None)
     parser.add_argument("--m-constraints", type=int, default=None)
+    parser.add_argument(
+        "--constraints-per-slot", type=int, default=1,
+        help="1 = equality-only task; >1 = non-pinning Mile 6 task class",
+    )
     parser.add_argument("--seed-base", type=int, default=None)
     parser.add_argument("--provider", default=None)
     parser.add_argument("--model", default=None)
@@ -406,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
         f"[calibrate] task class: n_entities="
         f"{args.n_entities or cfg.n_entities}, m_constraints="
         f"{args.m_constraints or cfg.m_constraints}, "
+        f"constraints_per_slot={args.constraints_per_slot}, "
         "strict_additive=True",
         flush=True,
     )
@@ -432,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
             parse_failure_threshold=args.parse_failure_threshold,
             n_entities=args.n_entities,
             m_constraints=args.m_constraints,
+            constraints_per_slot=args.constraints_per_slot,
             seed_base=args.seed_base,
             write_artifact=not args.no_artifact,
         )

@@ -16,6 +16,12 @@ Locked spec (Round 5):
   95% CI excludes zero. Monotonic growth is reported, not required.
 - Budget: ~750 calls, hard cap enforced
 
+Mile 6 task class:
+- constraints_per_slot = 1 keeps the original equality-only task.
+- constraints_per_slot > 1 enables non-pinning single-slot constraints
+  (inequality, set membership, capacity range). The tuned value comes from
+  the calibration pre-check, not from this default.
+
 November 2026 compatibility:
 - API version 2026-10-21 rejects temperature / top_p / top_k on every model.
   The harness sends none of them and uses the provider's default sampling.
@@ -47,6 +53,10 @@ class ExperimentConfig:
     # 24 without raising "Constraint domain exhausted". Difficulty hardening
     # (Mile 6) changes the constraint class, not this number.
     m_constraints: int = 24
+    # Mile 6: 1 = original equality-only task. Values > 1 generate
+    # non-pinning single-slot constraints per slot. The tuned default comes
+    # from calibration; 1 preserves the pre-Mile-6 behavior.
+    constraints_per_slot: int = 1
     seed_base: int = 1000  # task seeds are seed_base .. seed_base + n_tasks-1
 
     # --- Resonator dynamics ----------------------------------------------

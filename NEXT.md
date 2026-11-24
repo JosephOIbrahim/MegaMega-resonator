@@ -1,10 +1,24 @@
 # NEXT — resume here
 
-**Status (2026-11-23):** Mile 6 prep is in progress. The calibration
-pre-check is done; the constraint redesign remains the open scientific
-blocker.
+**Status (2026-11-24):** The Mile 6 non-pinning constraint kinds are
+implemented. Next: calibrate and tune `constraints_per_slot`, then run.
 
 ---
+
+## What changed in the Mile 6 task redesign (2026-11-24)
+
+- Added `local_ineq`, `local_in`, and `local_range` to
+  `megamega/bench/constraints.py`. All are single-slot; the strict-additive
+  validator accepts the four single-slot kinds and rejects coupled ones.
+- `generate_task(..., constraints_per_slot=N, constraint_mix=...)` emits N
+  constraints per slot. `N=1` preserves the original equality task; `N>1`
+  uses the non-pinning mix (60% inequality, 25% set membership, 15%
+  capacity range).
+- `render_task_prompt` and the oracle report render `!=`, `in {...}`, and
+  `>=` / `<=`. The oracle names the violated constraint, not the GT value.
+- `resonator/config.py` adds `constraints_per_slot` (default 1), passed
+  through `run.py`; the calibrator exposes `--constraints-per-slot`.
+- 500 tests pass.
 
 ## What changed in Mile 6 prep (2026-11-23)
 
@@ -14,7 +28,7 @@ blocker.
 - Writes `runs/calibration-*.json` with per-task scores and usage.
 - `--n-entities` / `--m-constraints` test a candidate difficulty without
   editing the config.
-- 6 new tests; 466 total.
+- 6 tests added; the suite is now 500.
 
 Remaining prep: per-task JSONL checkpointing, CLI arguments for the full
 run, and the oracle-repair diagnostic.
@@ -35,7 +49,7 @@ run, and the oracle-repair diagnostic.
   first round is not mislabelled as ORACLE_DEPENDENT.
 - Artifact records all three rates, `invalidation_reasons`, blind gain and
   its CI, and per-task baseline parse failures.
-- 466 tests pass.
+- 466 tests passed at that point.
 
 ## What changed in Mile 4 (2026-11-23)
 
@@ -71,16 +85,18 @@ raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
 
 ## Next actions, in order
 
-1. **Mile 6 — task redesign (open blocker).** Add local non-pinning
-   constraints (inequality, set membership, range) that stay single-slot
-   and add-only. Calibrate to single-shot < 20% / B < 0.5. If the task class
-   cannot reach it without truncation, report that and escalate.
-2. **Mile 6 prep — remaining instrumentation.** Add per-task JSONL
-   checkpointing so an interrupted run keeps data, and CLI arguments for
-   tasks/provider/model. Add an oracle-repair diagnostic before trusting a
-   DEAD verdict: the proxy drops corrections to already-filled slots, so
-   the oracle arm currently measures "did the model guess wrong early" as
-   well as "can it use feedback." These are not blockers for the redesign.
+1. **Tune the non-pinning class.** Run the calibration with
+   `--constraints-per-slot 2`, then 3 or 4, targeting first-shot < 20% and
+   B < 0.5. Set `resonator/config.py` `constraints_per_slot` to the tuned
+   value. If the single-slot class cannot reach B < 0.5 without truncation,
+   stop and escalate to a coupled-constraint spec; do not silently break
+   the add-only guarantee.
+2. **Remaining instrumentation.** Add per-task JSONL checkpointing so an
+   interrupted run keeps data, and CLI arguments for tasks/provider/model.
+   Add an oracle-repair diagnostic before trusting a DEAD verdict: the
+   proxy drops corrections to already-filled slots, so the oracle arm
+   currently measures "did the model guess wrong early" as well as "can it
+   use feedback." These are not blockers for tuning.
 3. **Mile 7 — run.** Dry run → calibration → three real runs → verdict with
    CIs → update this file.
 
@@ -101,5 +117,5 @@ raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
 - **OpenAI:** no hardcoded model; `RESONATOR_MODEL` required.
 
 **Everything else is done:** substrate (Mile 1–2), resonator (Mile 3),
-466 tests, environment-only key handling. Rotate the key if it was ever
+500 tests, environment-only key handling. Rotate the key if it was ever
 exposed.
