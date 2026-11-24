@@ -93,6 +93,23 @@ def test_first_shot_and_best_of_n_math() -> None:
     assert result.passed is True
 
 
+def test_calibration_with_non_pinning_kinds() -> None:
+    script = ["{}", _gt_json(1000)]
+    client, _ = _client(script)
+    result = run_calibration(
+        _cfg(),
+        n_tasks=1,
+        samples_per_task=2,
+        constraints_per_slot=2,
+        client=client,
+        meaningful=True,
+        write_artifact=False,
+    )
+    assert result.constraints_per_slot == 2
+    assert result.m_constraints == 8 * 3 * 2
+    assert result.best_of_n_mean == pytest.approx(1.0)
+
+
 def test_aborts_when_b_is_above_target() -> None:
     script = [_gt_json(1000), _gt_json(1000)]
     client, _ = _client(script)
@@ -174,4 +191,9 @@ def test_rejects_invalid_counts_and_targets() -> None:
         run_calibration(
             _cfg(), n_tasks=1, samples_per_task=1,
             target_b=1.5, write_artifact=False,
+        )
+    with pytest.raises(ValueError, match="constraints_per_slot"):
+        run_calibration(
+            _cfg(), n_tasks=1, samples_per_task=1,
+            constraints_per_slot=0, write_artifact=False,
         )

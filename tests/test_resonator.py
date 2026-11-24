@@ -15,7 +15,15 @@ import json
 
 import pytest
 
-from megamega.bench import generate_task
+from megamega.bench import (
+    LocalConstraint,
+    LocalInequalityConstraint,
+    LocalRangeConstraint,
+    LocalSetConstraint,
+    LogicTask,
+    NodeState,
+    generate_task,
+)
 from resonator.arms import RoundRecord, TaskResult
 from resonator.cavity import (
     SparsityGuard,
@@ -25,6 +33,12 @@ from resonator.cavity import (
 )
 from resonator.config import ExperimentConfig, approx_tokens
 from resonator.llm import BudgetGuard, UsageLedger, make_client
+from resonator.task_adapter import (
+    failing_constraints_report,
+    oracle_feedback_prompt,
+    render_task_prompt,
+    score,
+)
 from resonator.verdict import Verdict, decide, paired_bootstrap_ci
 
 
@@ -271,6 +285,75 @@ class TestUsageAccounting:
         assert cfg.default_model() == ""
         with pytest.raises(RuntimeError, match="RESONATOR_MODEL"):
             cfg.require_model()
+
+
+# ---------------------------------------------------------------------------
+# Task adapter: non-pinning constraints (Mile 6)
+# ---------------------------------------------------------------------------
+
+
+class TestTaskAdapterNonPinning:
+    def _manual_task(self) -> LogicTask:
+        gt = {"N": NodeState(region="us", role="web", capacity=8)}
+        return LogicTask(
+            seed=0,
+            n_entities=1,
+            m_constraints=4,
+            requested_mu=1.0,
+            realized_mu=1.0,
+            strict_additive=True,
+            entities=("N",),
+            constraints=(
+                LocalInequalityConstraint(
+                    node="N", attr="region", value="eu"
+                ),
+                LocalSetConstraint(
+                    node="N", attr="role", values=("web", "db")
+                ),
+                LocalRangeConstraint(node="N", op=">=", value=4),
+                LocalConstraint(node="N", attr="capacity", value=8),
+            ),
+            ground_truth=gt,
+        )
+
+    def test_prompt_renders_each_kind(self) -> None:
+        prompt = render_task_prompt(self._manual_task())
+        assert "N.region != 'eu'" in prompt
+        assert "N.role in {'web', 'db'}" in prompt
+        assert "N.capacity >= 4" in prompt
+        assert "N.capacity == 8" in prompt
+
+    def test_gt_scores_one_and_failure_report(self) -> None:
+        task = self._manual_task()
+        gt = {n: dict(v.model_dump()) for n, v in task.ground_truth.items()}
+        assert score(task, gt) == 1.0
+
+        report = failing_constraints_report(task, {})
+        assert "must not be 'eu'" in report
+        assert "must be one of {'web', 'db'}" in report
+        assert "must be >= 4" in report
+        assert "must be 8" in report
+
+        oracle = oracle_feedback_prompt(task, {})
+        assert "ORACLE REPORT" in oracle
+        assert "must not be 'eu'" in oracle
+
+    def test_generated_non_pinning_task_scores_and_renders(self) -> None:
+        task = generate_task(
+            seed=7,
+            mu=1.0,
+            n_entities=4,
+            m_constraints=0,
+            strict_additive=True,
+            constraints_per_slot=2,
+        )
+        gt = {n: dict(v.model_dump()) for n, v in task.ground_truth.items()}
+        assert score(task, gt) == 1.0
+        prompt = render_task_prompt(task)
+        assert any(
+            marker in prompt for marker in ("!=", " in {", ">=", "<=")
+        )
+        assert not all(c.kind == "local" for c in task.constraints)
 
 
 # ---------------------------------------------------------------------------

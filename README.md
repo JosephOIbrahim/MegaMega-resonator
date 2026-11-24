@@ -4,12 +4,13 @@
 responses through a lossless cavity produces measurable constraint-
 satisfaction gain over naive best-of-N on procedural combinatorial tasks.
 
-**Mile 6 prep — task redesign.** The substrate (Mile 1–2), the 3-arm
-resonator (Mile 3), the November 2026 compatibility pass (Mile 4), and the
-instrument-validity pass (Mile 5) are built. The calibration pre-check is
-in place; the constraint redesign is next. 466 tests pass. The May 2026
-live run found the benchmark too easy for Haiku 4.5 (B = 1.000 on the first
-four tasks); the task class is the open scientific blocker.
+**Mile 6 — task redesign.** The substrate (Mile 1–2), the 3-arm resonator
+(Mile 3), the November 2026 compatibility pass (Mile 4), and the
+instrument-validity pass (Mile 5) are built. The non-pinning constraint
+kinds and the calibration pre-check are in place; the next step is tuning
+`constraints_per_slot` to bring B below 0.5. 500 tests pass. The May 2026
+live run found the benchmark too easy for Haiku 4.5 (B = 1.000 on the
+first four tasks); the task class is the open scientific blocker.
 
 ---
 
@@ -42,8 +43,8 @@ Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
                   no sampling params, usage/stop_reason capture
 Mile 5    DONE    instrument validity: parse-first guard, parse/truncation
                   invalidation, TRUE_LASING CI gate
-Mile 6    NEXT    task redesign: local non-pinning constraints
-                  prep: calibration pre-check (resonator/calibrate.py)
+Mile 6    IN PROGRESS  non-pinning constraint kinds + calibration pre-check
+                       next: tune constraints_per_slot to B < 0.5
 Mile 7    QUEUED  dry run → calibration → real runs → verdict
 ```
 
@@ -59,6 +60,12 @@ contains the answer and the model only has to reformat it as JSON. At
 `ValueError: Constraint domain exhausted`. Difficulty hardening (Mile 6)
 changes the constraint class, not the count.
 
+**Mile 6 task class:** `generate_task(..., constraints_per_slot=N)` emits
+four single-slot kinds: equality, inequality, set membership, and capacity
+range. `N=1` keeps the original equality task; `N>1` uses the non-pinning
+mix. No constraint couples two slots, so the proxy cavity's add-only
+guarantee still holds. Calibration chooses N.
+
 ---
 
 ## Setup (PowerShell, in the repo folder)
@@ -71,7 +78,7 @@ pip install -e ".[dev,cloud]"
 pytest -q
 ```
 
-You want **466 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
+You want **500 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
 which sends API version `2026-10-21` by default. The `openai` extra is
 optional and requires an explicit `RESONATOR_MODEL`.
 

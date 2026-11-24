@@ -3,9 +3,8 @@
 **Project:** MegaMega-resonator
 **Goal:** Run the sub-$5 test that returns a four-way verdict on the resonator
 thesis — true lasing / oracle-dependent gain / parasitic lasing / dead.
-**Status (2026-11-23):** Mile 6 prep is in progress. The calibration
-pre-check is done; the constraint redesign remains the open scientific
-blocker.
+**Status (2026-11-24):** The Mile 6 non-pinning constraint kinds are
+implemented. Next: calibrate and tune `constraints_per_slot`, then run.
 
 ---
 
@@ -13,13 +12,13 @@ blocker.
 
 ```
 Mile 1-2  DONE    generator + constraints + scoring
-Mile 3    BUILT   3-arm resonator test (466 tests, stub-verified)
+Mile 3    BUILT   3-arm resonator test (500 tests, stub-verified)
 Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
                   no sampling params, usage/stop_reason capture
 Mile 5    DONE    instrument validity: parse-first guard, parse/truncation
                   invalidation, TRUE_LASING CI gate
-Mile 6    NEXT    task redesign: local non-pinning constraints
-                  prep: calibration pre-check (done)
+Mile 6    IN PROGRESS  non-pinning constraint kinds + calibration pre-check
+                       next: tune constraints_per_slot to B < 0.5
 Mile 7    QUEUED  dry run -> calibration -> real runs -> verdict
 ```
 
@@ -81,12 +80,19 @@ parse failures, and exits non-zero when B is above the target. It writes a
 per-task JSONL checkpointing, CLI arguments for the full run, and the
 oracle-repair diagnostic.
 
-## Mile 6 — task redesign (next, open blocker)
+## Mile 6 — task redesign (in progress)
 
-Add local non-pinning constraint kinds (inequality, set membership, range).
-They stay single-slot and add-only, so the strict-additive property survives,
-but the prompt stops listing the answer. Generate them from GT and calibrate
-to single-shot below 20% / B below 0.5.
+**Done:** `local_ineq`, `local_in`, and `local_range` are implemented as
+single-slot constraints. `generate_task(..., constraints_per_slot=N,
+constraint_mix=...)` emits N per slot; `N=1` preserves the equality task.
+The strict-additive validator accepts the four single-slot kinds and
+rejects coupled ones. The prompt and oracle render `!=`, `in {...}`, and
+`>=` / `<=`; the oracle names the violated constraint, not the GT value.
+The calibrator exposes `--constraints-per-slot`.
+
+**Next:** tune N (start at 2, then 3 or 4) to first-shot < 20% / B < 0.5.
+If the single-slot class cannot reach it without truncation, stop and write
+a coupled-constraint spec rather than breaking the add-only guarantee.
 
 ## Mile 7 — run
 

@@ -9,9 +9,18 @@ operate on identical semantics.
 
 Constraint kinds
 ----------------
-- LocalConstraint        Unary:  Node.attr == value
+- LocalConstraint            Unary:  Node.attr == value
+- LocalInequalityConstraint  Unary:  Node.attr != value
+- LocalSetConstraint         Unary:  Node.attr in {v1, v2, ...}
+- LocalRangeConstraint       Unary:  Node.capacity >= value (or <= value)
 - CoupledEqualityConstraint  Binary: Node1.attr OP Node2.attr  (OP in {==, !=})
-- CoupledSumConstraint   Binary: Node1.capacity + Node2.capacity == value
+- CoupledSumConstraint       Binary: Node1.capacity + Node2.capacity == value
+
+The first four are single-slot constraints: each references one
+(node, attribute) pair. They are the only kinds allowed in a
+strict-additive task because the proxy cavity can satisfy them by adding
+one correct triple per slot, with no revision. The coupled kinds are for
+the general benchmark path.
 
 Missing-or-None semantics
 -------------------------
@@ -73,6 +82,50 @@ class LocalConstraint(BaseModel):
     value: Union[str, int]
 
 
+class LocalInequalityConstraint(BaseModel):
+    """Unary: Node.attr != value."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["local_ineq"] = "local_ineq"
+    node: str
+    attr: Attr
+    op: Literal["!="] = "!="
+    value: Union[str, int]
+
+
+class LocalSetConstraint(BaseModel):
+    """Unary: Node.attr in {values}."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["local_in"] = "local_in"
+    node: str
+    attr: Attr
+    op: Literal["in"] = "in"
+    values: tuple[Union[str, int], ...]
+
+
+class LocalRangeConstraint(BaseModel):
+    """Unary: Node.capacity >= value or <= value."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["local_range"] = "local_range"
+    node: str
+    attr: Literal["capacity"] = "capacity"
+    op: Literal[">=", "<="]
+    value: int
+
+
+SINGLE_SLOT_KINDS: tuple[str, ...] = (
+    "local",
+    "local_ineq",
+    "local_in",
+    "local_range",
+)
+
+
 class CoupledEqualityConstraint(BaseModel):
     """Binary: Node1.attr OP Node2.attr where OP in {==, !=}."""
 
@@ -99,7 +152,14 @@ class CoupledSumConstraint(BaseModel):
 
 
 Constraint = Annotated[
-    Union[LocalConstraint, CoupledEqualityConstraint, CoupledSumConstraint],
+    Union[
+        LocalConstraint,
+        LocalInequalityConstraint,
+        LocalSetConstraint,
+        LocalRangeConstraint,
+        CoupledEqualityConstraint,
+        CoupledSumConstraint,
+    ],
     Field(discriminator="kind"),
 ]
 
@@ -125,6 +185,35 @@ def evaluate_constraint(c: Constraint, state: StateDict) -> bool:
         if actual is None:
             return False
         return actual == c.value
+
+    if c.kind == "local_ineq":
+        node_state = state.get(c.node)
+        if not node_state:
+            return False
+        actual = node_state.get(c.attr)
+        if actual is None:
+            return False
+        return actual != c.value
+
+    if c.kind == "local_in":
+        node_state = state.get(c.node)
+        if not node_state:
+            return False
+        actual = node_state.get(c.attr)
+        if actual is None:
+            return False
+        return actual in c.values
+
+    if c.kind == "local_range":
+        node_state = state.get(c.node)
+        if not node_state:
+            return False
+        actual = node_state.get("capacity")
+        if not isinstance(actual, int):
+            return False
+        if c.op == ">=":
+            return actual >= c.value
+        return actual <= c.value
 
     if c.kind == "coupled_eq":
         s1 = state.get(c.node1)

@@ -1,7 +1,7 @@
 # RUN.md — Running the resonator test
 
-Mile 5 is built, and Mile 6 prep adds the calibration pre-check (466 tests
-pass). A full 50-task run on
+Mile 5 is built, and the Mile 6 constraint kinds and calibration pre-check
+are in (500 tests pass). A full 50-task run on
 Claude Haiku 5.5 costs roughly **$0.10–$0.20** at November 2026 prices, not
 $0.50.
 The harness uses API version `2026-10-21` through `anthropic>=2.0.0`; that
@@ -36,7 +36,7 @@ Confirm it is healthy:
 pytest -q
 ```
 
-You want: **466 passed**.
+You want: **500 passed**.
 
 For the optional OpenAI path, install `.[dev,openai]` and set
 `RESONATOR_MODEL`; there is no hardcoded 2026 default.
@@ -133,7 +133,7 @@ blind arm that solves the task on round 1 is not mislabelled.
 
 ---
 
-## Calibration pre-check (Mile 6 prep)
+## Calibration pre-check (Mile 6)
 
 Measure difficulty before a full run. The pre-check runs K tasks × M
 independent samples and reports first-shot and best-of-N scores. It exits
@@ -144,20 +144,27 @@ full experiment spends money.
 # Stub: wiring check only, no network, no cost.
 python -m resonator.calibrate --tasks 4 --samples 2
 
-# Real model (after setting the key/provider from Step 2):
+# Original equality task (Mile 5 behavior):
 python -m resonator.calibrate --tasks 10 --samples 5 --target-b 0.50
+
+# Non-pinning Mile 6 task class, 2 constraints per slot:
+python -m resonator.calibrate --tasks 10 --samples 5 --target-b 0.50 --constraints-per-slot 2
 ```
 
 It prints the first-shot mean and success rate, the best-of-N mean (B) and
 success rate, parse failures, and a PASS / FAIL / WIRING ONLY status with
 the next action. It writes `runs\calibration-*.json`.
 
-`--n-entities` and `--m-constraints` test a candidate difficulty without
-editing the config. Remember the 8 × 3 = 24 ceiling: at `n_entities=8`,
-`m_constraints` above 24 raises `Constraint domain exhausted`. The old
-advice to raise it to 30 is wrong; Mile 6 changes the constraint class, not
-the count.
+`--constraints-per-slot 1` keeps the original equality task. Values above 1
+emit the non-pinning mix (inequality, set membership, capacity range); the
+total is `n_entities × 3 × constraints_per_slot`, so `m_constraints` is
+ignored on that path. Start at 2, then try 3 or 4 if B is still too high.
+
+`--n-entities` and `--m-constraints` test a candidate difficulty on the
+equality path. At `n_entities=8`, `m_constraints` above 24 raises
+`Constraint domain exhausted`; the non-pinning path does not use that
+ceiling.
 
 The spec wants single-shot success below 20% so the resonator has headroom.
-Until the Mile 6 redesign, a real run is a pipeline test, not a thesis
-result.
+Until the Mile 6 class is tuned to B < 0.5, a real run is a pipeline test,
+not a thesis result.
