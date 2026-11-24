@@ -1,7 +1,7 @@
 # RUN.md — Running the resonator test
 
 Mile 5 is built, and the Mile 6 constraint kinds and calibration pre-check
-are in (500 tests pass). A full 50-task run on
+are in (501 tests pass). A full 50-task run on
 Claude Haiku 5.5 costs roughly **$0.10–$0.20** at November 2026 prices, not
 $0.50.
 The harness uses API version `2026-10-21` through `anthropic>=2.0.0`; that
@@ -36,7 +36,7 @@ Confirm it is healthy:
 pytest -q
 ```
 
-You want: **500 passed**.
+You want: **501 passed**.
 
 For the optional OpenAI path, install `.[dev,openai]` and set
 `RESONATOR_MODEL`; there is no hardcoded 2026 default.

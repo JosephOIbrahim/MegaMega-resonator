@@ -8,7 +8,7 @@ satisfaction gain over naive best-of-N on procedural combinatorial tasks.
 (Mile 3), the November 2026 compatibility pass (Mile 4), and the
 instrument-validity pass (Mile 5) are built. The non-pinning constraint
 kinds and the calibration pre-check are in place; the next step is tuning
-`constraints_per_slot` to bring B below 0.5. 500 tests pass. The May 2026
+`constraints_per_slot` to bring B below 0.5. 501 tests pass. The May 2026
 live run found the benchmark too easy for Haiku 4.5 (B = 1.000 on the
 first four tasks); the task class is the open scientific blocker.
 
@@ -78,7 +78,7 @@ pip install -e ".[dev,cloud]"
 pytest -q
 ```
 
-You want **500 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
+You want **501 passed**. The `cloud` extra installs `anthropic>=2.0.0`,
 which sends API version `2026-10-21` by default. The `openai` extra is
 optional and requires an explicit `RESONATOR_MODEL`.
 

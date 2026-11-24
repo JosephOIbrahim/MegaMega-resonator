@@ -7,7 +7,7 @@ import json
 import pytest
 
 from megamega.bench import generate_task
-from resonator.calibrate import run_calibration
+from resonator.calibrate import main, run_calibration
 from resonator.config import ExperimentConfig
 from resonator.llm import BudgetGuard, Completion, LLMClient, UsageLedger
 
@@ -108,6 +108,28 @@ def test_calibration_with_non_pinning_kinds() -> None:
     assert result.constraints_per_slot == 2
     assert result.m_constraints == 8 * 3 * 2
     assert result.best_of_n_mean == pytest.approx(1.0)
+
+
+def test_main_header_shows_effective_constraint_count(
+    monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("RESONATOR_PROVIDER", "stub")
+    monkeypatch.setenv("RESONATOR_MODEL", "")
+    code = main(
+        [
+            "--tasks",
+            "1",
+            "--samples",
+            "1",
+            "--constraints-per-slot",
+            "2",
+            "--no-artifact",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0  # stub wiring check
+    # Default n_entities=8; per-slot path: 8 * 3 * 2 = 48.
+    assert "m_constraints=48" in captured.out
 
 
 def test_aborts_when_b_is_above_target() -> None:

@@ -12,7 +12,7 @@ implemented. Next: calibrate and tune `constraints_per_slot`, then run.
 
 ```
 Mile 1-2  DONE    generator + constraints + scoring
-Mile 3    BUILT   3-arm resonator test (500 tests, stub-verified)
+Mile 3    BUILT   3-arm resonator test (501 tests, stub-verified)
 Mile 4    DONE    Nov 2026 compatibility: API 2026-10-21, Haiku 5.5,
                   no sampling params, usage/stop_reason capture
 Mile 5    DONE    instrument validity: parse-first guard, parse/truncation

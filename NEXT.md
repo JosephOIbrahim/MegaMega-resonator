@@ -1,9 +1,31 @@
 # NEXT — resume here
 
 **Status (2026-11-24):** The Mile 6 non-pinning constraint kinds are
-implemented. Next: calibrate and tune `constraints_per_slot`, then run.
+implemented. Next: calibrate and tune `constraints_per_slot`; the real
+calibration is blocked on credentials.
 
 ---
+
+## Blocker: real calibration needs credentials
+
+`/megamega calibrate` runs in the Claude Code shell. If `ANTHROPIC_API_KEY`
+and `RESONATOR_PROVIDER` are not set there, it falls back to the stub and
+reports `WIRING ONLY` — a wiring check, not a difficulty estimate.
+
+To get a real calibration, run it in a PowerShell window where the key is
+set:
+
+```powershell
+cd C:\Users\User\MegaMega-resonator
+.venv\Scripts\Activate.ps1
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+$env:RESONATOR_PROVIDER = "anthropic"
+python -m resonator.calibrate --tasks 10 --samples 5 --target-b 0.50 --constraints-per-slot 2
+```
+
+Do not paste the key into chat. If `/megamega` should use an `ant auth
+login` profile instead, the Anthropic client needs to switch to the SDK's
+zero-arg credential resolution.
 
 ## What changed in the Mile 6 task redesign (2026-11-24)
 
@@ -18,7 +40,7 @@ implemented. Next: calibrate and tune `constraints_per_slot`, then run.
   `>=` / `<=`. The oracle names the violated constraint, not the GT value.
 - `resonator/config.py` adds `constraints_per_slot` (default 1), passed
   through `run.py`; the calibrator exposes `--constraints-per-slot`.
-- 500 tests pass.
+- 501 tests pass.
 
 ## What changed in Mile 6 prep (2026-11-23)
 
@@ -28,7 +50,7 @@ implemented. Next: calibrate and tune `constraints_per_slot`, then run.
 - Writes `runs/calibration-*.json` with per-task scores and usage.
 - `--n-entities` / `--m-constraints` test a candidate difficulty without
   editing the config.
-- 6 tests added; the suite is now 500.
+- 6 tests added; the suite is now 501.
 
 Remaining prep: per-task JSONL checkpointing, CLI arguments for the full
 run, and the oracle-repair diagnostic.
@@ -117,5 +139,5 @@ raises `Constraint domain exhausted`. The old RUN.md advice to raise it to
 - **OpenAI:** no hardcoded model; `RESONATOR_MODEL` required.
 
 **Everything else is done:** substrate (Mile 1–2), resonator (Mile 3),
-500 tests, environment-only key handling. Rotate the key if it was ever
+501 tests, environment-only key handling. Rotate the key if it was ever
 exposed.
