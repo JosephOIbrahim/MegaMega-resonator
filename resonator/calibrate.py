@@ -418,10 +418,20 @@ def main(argv: list[str] | None = None) -> int:
         f"calls={args.tasks * args.samples}",
         flush=True,
     )
+    n_entities = args.n_entities or cfg.n_entities
+    if args.constraints_per_slot > 1:
+        # The per-slot generator ignores the legacy m_constraints argument
+        # and emits one set of constraints for every (node, attr) slot.
+        effective_m_constraints = (
+            n_entities * 3 * args.constraints_per_slot
+        )
+    else:
+        effective_m_constraints = (
+            args.m_constraints or cfg.m_constraints
+        )
     print(
-        f"[calibrate] task class: n_entities="
-        f"{args.n_entities or cfg.n_entities}, m_constraints="
-        f"{args.m_constraints or cfg.m_constraints}, "
+        f"[calibrate] task class: n_entities={n_entities}, "
+        f"m_constraints={effective_m_constraints}, "
         f"constraints_per_slot={args.constraints_per_slot}, "
         "strict_additive=True",
         flush=True,
